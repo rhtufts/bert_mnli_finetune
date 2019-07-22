@@ -20,7 +20,8 @@ def fetch_weights():
     if not there, attempts to download and unzip the weights.
     :return path to weights.:
     """
-    if not os.path.exists('final_training_output'):
+    weights_path = './final_training_output'
+    if not os.path.exists(weights_path):
         output_dir = "./"
         url = "https://bert-mnli-fine-tune.s3-eu-west-1.amazonaws.com/bert_ft_training_weights.zip"
         logging.info("attempting to download from {}".format(url))
@@ -28,14 +29,16 @@ def fetch_weights():
         # zip_file = "bert_ft_training_weights.zip"
         logging.info("unzipping directory")
         with zipfile.ZipFile(output_dir + zip_file, "r") as zip_ref:
-            zip_ref.extractall("./final_training_output")
+            zip_ref.extractall(weights_path)
 
-        if not os.path.exists('final_training_output/fto'):
+        if not os.path.exists(weights_path+"/fto"):
             logging.debug("file was not successfully unzipped.")
-            return
+            exit(1)
         else:
-            return "./final_trainng_output/fto"
+            return weights_path+"/fto"
 
+    else:
+        return "./final_training_output/fto"
 # if not os.path.exists('final_training_output'):
 # #    output_dir = "./data/"
 #     output_dir = "./"

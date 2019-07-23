@@ -31,4 +31,4 @@ api.add_resource(HelloWorld, '/')
 if __name__ == '__main__':
 
     # app.run(debug=False)
-    serve(app, host='0.0.0.0', port=8000)
+    serve(app, host='0.0.0.0', port=8888)

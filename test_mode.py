@@ -14,6 +14,9 @@ import logging
 
 logging.basicConfig(filename='test_script.log',level=logging.DEBUG)
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
 def fetch_weights():
     """
     checks for existence of network weights.
@@ -54,7 +57,7 @@ def fetch_weights():
 #
 # btf_tokenizer = pt.BertTokenizer.from_pretrained('final_training_output/fto/')
 
-def predict_entailment(prod_dataloader, index2class={0:"contradiction",1:"neutral", 2:"entailment"}):
+def predict_entailment(prod_dataloader, model, index2class={0:"contradiction",1:"neutral", 2:"entailment"}):
     """
     predicts whether pairs in a dataset are contradictory or not.
     """
@@ -67,14 +70,60 @@ def predict_entailment(prod_dataloader, index2class={0:"contradiction",1:"neutra
                   'token_type_ids': batch[2]
                  }
 
-            outputs = btf(**inputs)
+            outputs = model(**inputs)
             if confidences is None:
                 confidences = F.softmax(outputs[0], dim=1).detach().cpu().numpy()
                 preds = np.argmax(confidences,axis=1)
             else:
                 confidences = np.append(confidences, F.softmax(outputs[0], dim=1).detach().cpu().numpy(), axis=0)
                 preds = np.append(preds,np.argmax(F.softmax(outputs[0], dim=1).detach().cpu().numpy(),axis=1), axis=0)
-    return [index2class[p] for p in preds],confidences
+    return [index2class[p] for p in preds],confidences.tolist()
+
+
+
+
+def load_model_from_pretrained():
+    weights_path = fetch_weights()
+    logging.info("loading pre-trained weights")
+    btf = pt.BertForSequenceClassification.from_pretrained(weights_path)
+    btf.to(device)
+    logging.info("loading pre-trained tokeniser")
+    btf_tokenizer = pt.BertTokenizer.from_pretrained(weights_path)
+    return btf_tokenizer, btf
+
+def create_dataloader_from_input(query_pairs, tokenizer):
+
+    examples = [InputExample(guid=n, **pair, label="neutral") for n,pair in enumerate(query_pairs)]
+    # ex1 = InputExample(1, "Mary went to the cinema.", "Actually she went to the pictures", "contradiction")
+    # ex2 = InputExample(1, "Brian enjoys parties", "He likes to drink", "neutral")
+    # examples = [ex1, ex2] * 10
+
+    features = convert_examples_to_features(examples, ["contradiction", "entailment", "neutral"], 128, tokenizer,
+                                            "classification")
+
+    # Convert to Tensors and build dataset
+    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long).to(device)
+    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long).to(device)
+    all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long).to(device)
+    all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.long).to(device)
+
+    # Create dataset and loaders
+    prod_dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    prod_sampler = SequentialSampler(prod_dataset)
+    # prod_dataloader = DataLoader(prod_dataset, sampler=prod_sampler, batch_size=args.eval_batch_size)
+    prod_dataloader = DataLoader(prod_dataset, sampler=prod_sampler, batch_size=8)
+    return prod_dataloader
+
+
+
+
+
+
+
+
+
+
+
 
 # ex1 = InputExample(1, "Mary went to the cinema.", "Actually she went to the pictures", "contradiction")
 # ex2 = InputExample(1, "Brian enjoys parties", "He likes to drink", "neutral")
@@ -102,33 +151,36 @@ def predict_entailment(prod_dataloader, index2class={0:"contradiction",1:"neutra
 if __name__ == "__main__":
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    print("loading model")
+    btf_tokenizer, btf = load_model_from_pretrained()
 
-    weights_path = fetch_weights()
-    btf = pt.BertForSequenceClassification.from_pretrained(weights_path)
-    btf.to(device)
-    btf_tokenizer = pt.BertTokenizer.from_pretrained(weights_path)
-
-    ex1 = InputExample(1, "Mary went to the cinema.", "Actually she went to the pictures", "contradiction")
-    ex2 = InputExample(1, "Brian enjoys parties", "He likes to drink", "neutral")
-    examples = [ex1, ex2] * 10
-
-    features = convert_examples_to_features(examples, ["contradiction", "entailment", "neutral"], 128, btf_tokenizer,
-                                            "classification")
-
-    # Convert to Tensors and build dataset
-    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long).to(device)
-    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long).to(device)
-    all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long).to(device)
-    all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.long).to(device)
-
-    # Create dataset and loaders
-    prod_dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-    prod_sampler = SequentialSampler(prod_dataset)
-    # prod_dataloader = DataLoader(prod_dataset, sampler=prod_sampler, batch_size=args.eval_batch_size)
-    prod_dataloader = DataLoader(prod_dataset, sampler=prod_sampler, batch_size=8)
+    # ex1 = InputExample(1, "Mary went to the cinema.", "Actually she went to the pictures", "contradiction")
+    # ex2 = InputExample(1, "Brian enjoys parties", "He likes to drink", "neutral")
+    # examples = [ex1, ex2] * 10
+    #
+    # features = convert_examples_to_features(examples, ["contradiction", "entailment", "neutral"], 128, btf_tokenizer,
+    #                                         "classification")
+    #
+    # # Convert to Tensors and build dataset
+    # all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long).to(device)
+    # all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long).to(device)
+    # all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long).to(device)
+    # all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.long).to(device)
+    #
+    # # Create dataset and loaders
+    # prod_dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    # prod_sampler = SequentialSampler(prod_dataset)
+    # # prod_dataloader = DataLoader(prod_dataset, sampler=prod_sampler, batch_size=args.eval_batch_size)
+    # prod_dataloader = DataLoader(prod_dataset, sampler=prod_sampler, batch_size=8)
+    sample_inputs = [{ 'text_a':"Mary went to the cinema.",
+                       'text_b':"Actually she went to the pictures"},
+                     { 'text_a':"Brian enjoys parties",
+                       'text_b':"He likes to drink"}
+                     ]
+    prod_dataloader = create_dataloader_from_input(sample_inputs, tokenizer=btf_tokenizer)
 
     # return preds,confidences
-    print(predict_entailment(prod_dataloader))
+    print(predict_entailment(prod_dataloader, btf))
 
 
 

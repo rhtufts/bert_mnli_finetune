@@ -2,7 +2,7 @@ Flask==1.1.1
 flask_restful==0.3.7
 numpy==1.16.4
 pytorch_transformers==1.0.0
-scipy==1.3.0
+scipy==1.10.0
 scikit_learn==0.21.2
 waitress==1.3.0
 wget==3.2
